@@ -1,4 +1,4 @@
-const CACHE='xiangqi-mvtmjqz7';
+const CACHE='xiangqi-mvtmsm4i';
 const PRECACHE=['./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 const LAZY=['./','./index.html','./pikafish.nnue'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(PRECACHE)).then(()=>self.skipWaiting())));
