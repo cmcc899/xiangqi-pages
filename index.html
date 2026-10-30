@@ -23,6 +23,7 @@
     #puzzle-panel, #replay-panel, #setup-panel { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: #3a3a3a; }
     #puzzle-panel button, #replay-panel button, #setup-panel button { padding: 6px 10px; font-size: 14px; border: none; border-radius: 4px; background: #b58a3c; color: #fff; }
     #puzzle-jump { width: 76px; padding: 6px 8px; font-size: 14px; border: none; border-radius: 4px; background: #555; color: #fff; text-align: center; }
+    #puzzle-cat { padding: 6px 8px; font-size: 14px; border: none; border-radius: 4px; background: #555; color: #fff; }
     #setup-palette { display: flex; flex-wrap: wrap; gap: 4px; }
     #setup-palette button { min-width: 36px; }
     #setup-palette button.active { background: #e74c3c; color: #fff; }
@@ -41,6 +42,7 @@
     <div id="status">红方走棋</div>
     <div id="board-wrap"><canvas id="board"></canvas></div>
     <div id="puzzle-panel" class="hidden">
+      <select id="puzzle-cat"></select>
       <button id="puzzle-prev">上一关</button>
       <button id="puzzle-next">下一关</button>
       <input id="puzzle-jump" type="number" min="1" max="2344" placeholder="关数" inputmode="numeric">
@@ -9292,6 +9294,14 @@ function startApp(canvas) {
   const difficultyEl = document.getElementById('difficulty');
   const setupPalette = document.getElementById('setup-palette');
   const solved = loadSolved();
+  const puzzleCatEl = document.getElementById('puzzle-cat');
+  const puzzleJump = document.getElementById('puzzle-jump');
+  {
+    const counts = new Map();
+    for (const p of PUZZLES) counts.set(p.source, (counts.get(p.source) || 0) + 1);
+    puzzleCatEl.innerHTML = `<option value="">全部（${PUZZLES.length}）</option>`
+      + [...counts].map(([c, n]) => `<option value="${c}">${c}（${n}）</option>`).join('');
+  }
 
   const state = {
     mode: 'ai',
@@ -9307,6 +9317,7 @@ function startApp(canvas) {
     winner: null,
     positionCounts: {},
     puzzleIdx: firstUnsolvedIndex(solved),
+    puzzleCat: '',
     puzzleMoves: [],
     puzzleHints: 0,
     puzzleResult: null,
@@ -9354,11 +9365,40 @@ function startApp(canvas) {
     refresh();
   }
 
+  const catCache = new Map();
+  // 当前筛选视图内的全局索引数组；未筛选返回 null（表示全集）
+  function viewIndices() {
+    if (!state.puzzleCat) return null;
+    let arr = catCache.get(state.puzzleCat);
+    if (!arr) {
+      arr = [];
+      for (let i = 0; i < PUZZLES.length; i++) if (PUZZLES[i].source === state.puzzleCat) arr.push(i);
+      catCache.set(state.puzzleCat, arr);
+    }
+    return arr;
+  }
+
+  function viewPos() {
+    const v = viewIndices();
+    return v ? v.indexOf(state.puzzleIdx) : state.puzzleIdx;
+  }
+
+  function stepPuzzle(d) {
+    const v = viewIndices();
+    if (!v) { loadPuzzle(state.puzzleIdx + d); return; }
+    const pos = v.indexOf(state.puzzleIdx);
+    loadPuzzle(pos < 0 ? v[0] : v[(pos + d + v.length) % v.length]);
+  }
+
   function renderPuzzleName() {
     const p = PUZZLES[state.puzzleIdx];
     const diff = p.difficulty === 1 ? '初级' : p.difficulty === 2 ? '中级' : '高级';
     const mark = solved.has(p.id) ? ' ✓' : '';
-    puzzleName.textContent = `第 ${state.puzzleIdx + 1} / 共 ${PUZZLES.length} 关 · ${p.name}（${diff}）${mark}`;
+    const v = viewIndices();
+    const total = v ? v.length : PUZZLES.length;
+    const pos = viewPos();
+    puzzleJump.max = total;
+    puzzleName.textContent = `第 ${pos >= 0 ? pos + 1 : 1} / 共 ${total} 关 · ${p.name}（${diff}）${mark}`;
   }
 
   function loadPuzzle(i) {
@@ -9710,12 +9750,20 @@ function startApp(canvas) {
   document.getElementById('hint').onclick = hint;
   document.getElementById('new').onclick = () => { state.mode === 'puzzle' ? loadPuzzle(state.puzzleIdx) : newGame(); };
   difficultyEl.onchange = () => { state.difficulty = difficultyEl.value; };
-  document.getElementById('puzzle-prev').onclick = () => loadPuzzle(state.puzzleIdx - 1);
-  document.getElementById('puzzle-next').onclick = () => loadPuzzle(state.puzzleIdx + 1);
-  const puzzleJump = document.getElementById('puzzle-jump');
+  document.getElementById('puzzle-prev').onclick = () => stepPuzzle(-1);
+  document.getElementById('puzzle-next').onclick = () => stepPuzzle(1);
+  puzzleCatEl.onchange = () => {
+    state.puzzleCat = puzzleCatEl.value;
+    const v = viewIndices();
+    if (!v) { loadPuzzle(firstUnsolvedIndex(solved)); return; }
+    const target = v.find(i => !solved.has(PUZZLES[i].id));
+    loadPuzzle(target === undefined ? v[0] : target);
+  };
   const jumpToPuzzle = () => {
     const n = parseInt(puzzleJump.value, 10);
-    if (!Number.isNaN(n) && n >= 1 && n <= PUZZLES.length) loadPuzzle(n - 1);
+    const v = viewIndices();
+    const total = v ? v.length : PUZZLES.length;
+    if (!Number.isNaN(n) && n >= 1 && n <= total) loadPuzzle(v ? v[n - 1] : n - 1);
     puzzleJump.value = '';
   };
   document.getElementById('puzzle-jump-btn').onclick = jumpToPuzzle;
